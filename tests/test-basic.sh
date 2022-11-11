@@ -19,7 +19,7 @@ set -e
 set -x
 set -o pipefail
 
-echo "1..1"
+echo "1..7"
 
 . $(dirname $0)/libtest.sh
 
@@ -30,9 +30,12 @@ echo "ok setup"
 
 git clone repos/coolproject
 cd coolproject
-git submodule update --init
+trusted_git_submodule update --init
 with_editor_script git evtag sign -u 472CDAFA v2015.1
 git show refs/tags/v2015.1 > tag.txt
+sed -e 's/^/#tag.txt /' < tag.txt
+${SRCDIR}/git-evtag-compute-py HEAD > tag-py.txt
+sed -e 's/^/#tag-py.txt /' < tag-py.txt
 TAG='Git-EVTag-v0-SHA512: 58e9834248c054f844f00148a030876f77eb85daa3caa15a20f3061f181403bae7b7e497fca199d25833b984c60f3202b16ebe0ed3a36e6b82f33618d75c569d'
 assert_file_has_content tag.txt "${TAG}"
 with_editor_script git evtag verify v2015.1 | tee verify.out
@@ -40,7 +43,6 @@ assert_file_has_content verify.out "Successfully verified: ${TAG}"
 # Also test subdirectory
 (cd src && with_editor_script git evtag verify v2015.1 | tee ../verify2.out)
 assert_file_has_content verify2.out "Successfully verified: ${TAG}"
-${SRCDIR}/git-evtag-compute-py HEAD > tag-py.txt
 assert_file_has_content tag-py.txt "${TAG}"
 
 rm -f tag.txt
@@ -51,7 +53,7 @@ cd ${test_tmpdir}
 rm coolproject -rf
 git clone repos/coolproject
 cd coolproject
-git submodule update --init
+trusted_git_submodule update --init
 echo 'super cool' > src/cool.c
 if with_editor_script git evtag sign -u 472CDAFA v2015.1 2>err.txt; then
     assert_not_reached "expected failure due to dirty tree"
@@ -69,7 +71,7 @@ cd ${test_tmpdir}
 rm coolproject -rf
 git clone repos/coolproject
 cd coolproject
-git submodule update --init
+trusted_git_submodule update --init
 with_editor_script git evtag sign -u 472CDAFA v2015.1
 git checkout -q HEAD^
 if git evtag verify v2015.1 2>err.txt; then
@@ -82,7 +84,7 @@ cd ${test_tmpdir}
 rm coolproject -rf
 git clone repos/coolproject
 cd coolproject
-git submodule update --init
+trusted_git_submodule update --init
 with_editor_script git evtag sign --with-legacy-archive-tag -u 472CDAFA v2015.1
 git show refs/tags/v2015.1 > tag.txt
 assert_file_has_content tag.txt 'ExtendedVerify-SHA256-archive-tar: 83991ee23a027d97ad1e06432ad87c6685e02eac38706e7fbfe6e5e781939dab'
@@ -98,7 +100,7 @@ cd ${test_tmpdir}
 rm coolproject -rf
 git clone repos/coolproject
 cd coolproject
-git submodule update --init
+trusted_git_submodule update --init
 with_editor_script git evtag sign --no-signature v2015.1
 git show refs/tags/v2015.1 > tag.txt
 assert_file_has_content tag.txt 'Git-EVTag-v0-SHA512: 58e9834248c054f844f00148a030876f77eb85daa3caa15a20f3061f181403bae7b7e497fca199d25833b984c60f3202b16ebe0ed3a36e6b82f33618d75c569d'
@@ -111,3 +113,24 @@ git evtag verify --no-signature v2015.1
 rm -f tag.txt
 rm -f verify.out
 echo "ok checksum-only tag + verify"
+
+cd ${test_tmpdir}
+rm coolproject -rf
+git clone repos/coolproject2
+cd coolproject2
+trusted_git_submodule update --init
+with_editor_script git evtag sign -u 472CDAFA v2015.1
+git show refs/tags/v2015.1 > tag.txt
+TAG='Git-EVTag-v0-SHA512: 8ef922041663821b8208d6e1037adbd51e0b19cc4dd3314436b3078bdae4073a616e6e289891fa5ad9f798630962a33350f6035fffec6ca3c499bc01f07c3d0a'
+assert_file_has_content tag.txt "${TAG}"
+with_editor_script git evtag verify v2015.1 | tee verify.out
+assert_file_has_content verify.out "Successfully verified: ${TAG}"
+# Also test subdirectory
+(cd src && with_editor_script git evtag verify v2015.1 | tee ../verify2.out)
+assert_file_has_content verify2.out "Successfully verified: ${TAG}"
+${SRCDIR}/git-evtag-compute-py HEAD > tag-py.txt
+assert_file_has_content tag-py.txt "${TAG}"
+
+rm -f tag.txt
+rm -f verify.out
+echo "ok tag + verify with nested submodules"

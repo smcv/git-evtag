@@ -24,6 +24,11 @@ export TEST_GPG_KEYID_1="472CDAFA"
 export TEST_GPG_KEYID_2="CA950D41"
 export TEST_GPG_KEYID_3="DF444D67"
 
+export GIT_AUTHOR_NAME='Colin Walters'
+export GIT_AUTHOR_EMAIL='walters@verbum.org'
+export GIT_COMMITTER_NAME="$GIT_AUTHOR_NAME"
+export GIT_COMMITTER_EMAIL="$GIT_AUTHOR_EMAIL"
+
 # GPG when creating signatures demands a writable
 # homedir in order to create lockfiles.  Work around
 # this by copying locally.
@@ -94,13 +99,22 @@ gitcommit_inctime() {
     env GIT_AUTHOR_DATE="$TSV" GIT_COMMITTER_DATE="$TSV" git commit "$@"
 }
 
+trusted_git_submodule () {
+    # Git forbids file:/// for submodules by default, to avoid untrusted
+    # file:/// repositories being able to break a security boundary
+    # (CVE-2022-39253).
+    # In this test suite, all the repositories are under our control and
+    # we trust them, so bypass that.
+    git -c protocol.file.allow=always submodule "$@"
+}
+
 setup_test_repository () {
     oldpwd=`pwd`
 
     cd ${test_tmpdir}
     mkdir coolproject
     cd coolproject
-    git init
+    git init -b mybranch
     gitcommit_reset_time
     echo 'So cool!' > README.md
     git add .
@@ -112,15 +126,15 @@ setup_test_repository () {
 
     cd ${test_tmpdir}
     mkdir -p repos/coolproject
-    cd repos/coolproject && git init --bare
+    cd repos/coolproject && git init --bare -b mybranch
     cd ${test_tmpdir}/coolproject
     git remote add origin file://${test_tmpdir}/repos/coolproject
-    git push --set-upstream origin master
+    git push --set-upstream origin mybranch
 
     cd ${test_tmpdir}
     mkdir subproject
     cd subproject
-    git init
+    git init -b mybranch
     echo 'this is libsub.c' > libsub.c
     echo 'An example submodule' > README.md
     git add .
@@ -131,20 +145,33 @@ setup_test_repository () {
     gitcommit_inctime -a -m 'an update'
     cd ${test_tmpdir}
     mkdir -p repos/subproject
-    cd repos/subproject && git init --bare
+    cd repos/subproject && git init --bare -b mybranch
     cd ${test_tmpdir}/subproject
     git remote add origin file://${test_tmpdir}/repos/subproject
-    git push --set-upstream origin master
+    git push --set-upstream origin mybranch
 
     cd ${test_tmpdir}/coolproject
-    git submodule add ../subproject subproject 
+    trusted_git_submodule add ../subproject subproject
     git add subproject
     echo '#include subproject/src/libsub.c' >> src/cool.c
     gitcommit_inctime -a -m 'Add libsub'
-    git push
+    git push origin mybranch
+
+    # Copy coolproject to create another version which has two submodules,
+    # one which is nested deeper in the repository.
+    cd ${test_tmpdir}
+    cp -r repos/coolproject repos/coolproject2
+    git clone file://${test_tmpdir}/repos/coolproject2
+    cd coolproject2
+    mkdir subprojects
+    trusted_git_submodule add ../subproject subprojects/subproject
+    git add subprojects/subproject
+    gitcommit_inctime -a -m 'Add subprojects/subproject'
+    git push origin mybranch
 
     cd ${test_tmpdir}
     rm coolproject -rf
+    rm coolproject2 -rf
     rm subproject -rf
 
     cd $oldpwd
